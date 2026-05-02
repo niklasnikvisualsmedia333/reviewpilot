@@ -14,6 +14,8 @@ export type CustomerStatus =
 export type PermissionStatus = 'not_requested' | 'requested' | 'granted' | 'declined';
 export type GoogleReviewStatus = 'not_requested' | 'requested' | 'received';
 export type RequestStatus = 'draft' | 'prepared' | 'sent';
+export type BusinessType = 'freelancer' | 'local_service' | 'agency' | 'photography' | 'health_practice' | 'consulting' | 'handcraft' | 'other';
+export type CustomerType = 'private_client' | 'business_client' | 'partner' | 'repeat_client' | 'other';
 export type TemplateContext =
   | 'project_completed'
   | 'workshop_completed'
@@ -44,6 +46,9 @@ export interface Customer {
   phone: string;
   projectName: string;
   serviceType: string;
+  customerType: CustomerType;
+  acquisitionSource: string;
+  projectValue: number;
   projectDate: string;
   status: CustomerStatus;
   internalNotes: string;
@@ -98,9 +103,19 @@ export interface Template {
 }
 
 export interface AppData {
+  onboardingCompleted: boolean;
   businessProfile: BusinessProfile;
   customers: Customer[];
   reviewRequests: ReviewRequest[];
   feedback: Feedback[];
   templates: Template[];
+}
+
+export interface LocalAccount {
+  id: string;
+  name: string;
+  email: string;
+  businessType: BusinessType;
+  createdAt: string;
+  lastActiveAt: string;
 }

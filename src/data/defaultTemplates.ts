@@ -12,7 +12,7 @@ export const defaultTemplates: Template[] = [
     channel: 'whatsapp',
     context: 'project_completed',
     templateText:
-      'Hallo {{customer_name}}, vielen Dank nochmal für die Zusammenarbeit bei {{project_name}}. Wenn du mit {{service_type}} zufrieden warst, würde ich mich sehr über eine ehrliche Google-Bewertung freuen: {{google_review_link}}\n\nNatürlich nur, wenn es für dich passt. Falls du lieber direkt Feedback geben möchtest, freue ich mich genauso über eine kurze private Rückmeldung. Danke dir!\n{{owner_name}}',
+      'Hallo {{customer_name}}, vielen Dank nochmal für die Zusammenarbeit bei {{project_name}}. Wenn du deine ehrliche Erfahrung mit {{service_type}} teilen möchtest, freue ich mich über eine Google-Bewertung: {{google_review_link}}\n\nEs geht ausdrücklich um ehrliches Feedback, auch wenn etwas kritisch war. Kein Druck: Eine kurze private Rückmeldung hier ist genauso willkommen. Danke dir!\n{{owner_name}}',
     isDefault: true,
     createdAt: stamp,
     updatedAt: stamp,
@@ -25,7 +25,7 @@ export const defaultTemplates: Template[] = [
     channel: 'email',
     context: 'project_completed',
     templateText:
-      'Hallo {{customer_name}},\n\nvielen Dank für die angenehme Zusammenarbeit bei {{project_name}}. Ehrliches Kundenfeedback hilft {{business_name}}, die eigene Arbeit weiter zu verbessern und neuen Kundinnen und Kunden Orientierung zu geben.\n\nWenn Sie Ihre Erfahrung teilen möchten, können Sie hier eine Google-Bewertung hinterlassen: {{google_review_link}}\n\nEs geht ausdrücklich um ehrliches Feedback, ohne Druck und ohne Erwartung einer bestimmten Bewertung. Alternativ können Sie mir auch direkt eine kurze private Rückmeldung senden.\n\nViele Grüße\n{{owner_name}}',
+      'Hallo {{customer_name}},\n\nvielen Dank für die angenehme Zusammenarbeit bei {{project_name}}. Ehrliches Kundenfeedback hilft {{business_name}}, die eigene Arbeit zu verbessern und neuen Kundinnen und Kunden Orientierung zu geben.\n\nWenn Sie Ihre Erfahrung teilen möchten, können Sie hier eine Google-Bewertung hinterlassen: {{google_review_link}}\n\nEs geht ausdrücklich um ehrliches Feedback, auch wenn etwas kritisch war, ohne Druck und ohne Erwartung einer bestimmten Bewertung. Alternativ können Sie mir auch direkt eine kurze private Rückmeldung senden.\n\nViele Grüße\n{{owner_name}}',
     isDefault: true,
     createdAt: stamp,
     updatedAt: stamp,
@@ -38,7 +38,7 @@ export const defaultTemplates: Template[] = [
     channel: 'linkedin',
     context: 'project_completed',
     templateText:
-      'Hallo {{customer_name}}, danke nochmal für die Zusammenarbeit bei {{project_name}}. Wenn du deine Erfahrung mit {{business_name}} ehrlich teilen möchtest, hilft mir eine kurze Bewertung sehr: {{google_review_link}}\n\nFalls LinkedIn für dich passender ist, freue ich mich auch über ein kurzes Feedback hier im Chat.',
+      'Hallo {{customer_name}}, danke nochmal für die Zusammenarbeit bei {{project_name}}. Wenn du deine Erfahrung mit {{business_name}} ehrlich teilen möchtest, kannst du hier eine Google-Bewertung schreiben: {{google_review_link}}\n\nAuch kritisches Feedback ist willkommen. Falls LinkedIn für dich passender ist, freue ich mich auch über eine kurze private Rückmeldung hier im Chat.',
     isDefault: true,
     createdAt: stamp,
     updatedAt: stamp,
@@ -51,7 +51,7 @@ export const defaultTemplates: Template[] = [
     channel: 'sms',
     context: 'project_completed',
     templateText:
-      'Hallo {{customer_name}}, danke für die Zusammenarbeit bei {{project_name}}. Wenn du magst, teile gern ehrliches Feedback als Google-Bewertung: {{google_review_link}} Danke, {{owner_name}}',
+      'Hallo {{customer_name}}, danke für die Zusammenarbeit bei {{project_name}}. Wenn du magst, teile gern ehrliches Feedback, auch kritisch, als Google-Bewertung: {{google_review_link}} Danke, {{owner_name}}',
     isDefault: true,
     createdAt: stamp,
     updatedAt: stamp,
@@ -90,7 +90,7 @@ export const defaultTemplates: Template[] = [
     channel: 'whatsapp',
     context: 'follow_up',
     templateText:
-      'Hallo {{customer_name}}, kurze freundliche Erinnerung zu meiner Nachricht nach {{project_name}}. Wenn du deine ehrliche Erfahrung teilen möchtest, ist hier der Bewertungslink: {{google_review_link}}\n\nFalls es gerade nicht passt, ist das völlig in Ordnung. Danke dir!',
+      'Hallo {{customer_name}}, kurze freundliche Erinnerung zu meiner Nachricht nach {{project_name}}. Wenn du deine ehrliche Erfahrung teilen möchtest, ist hier der Bewertungslink: {{google_review_link}}\n\nAuch kritisches Feedback ist willkommen. Falls es gerade nicht passt, ist das völlig in Ordnung. Danke dir!',
     isDefault: true,
     createdAt: stamp,
     updatedAt: stamp,

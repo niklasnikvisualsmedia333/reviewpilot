@@ -16,6 +16,9 @@ It helps a small business ask every real customer for honest Google feedback, tr
 - CSV exports for customers and testimonials
 - JSON backup export/import with validation
 - Local demo data reset
+- Browser-local workspace login for separating business profiles on one device
+- Guided onboarding for business setup, default language, primary channel and service focus
+- Customer analytics fields for customer type, acquisition source and project value
 
 ## Tech Stack
 
@@ -27,6 +30,7 @@ It helps a small business ask every real customer for honest Google feedback, tr
 - recharts
 - qrcode
 - localStorage persistence
+- Local workspace profiles only; no cloud authentication in v0.1
 - Vitest
 
 ## Run Locally
@@ -70,6 +74,8 @@ https://<your-github-username>.github.io/reviewpilot/
 
 ReviewPilot v0.1 is meant to prove the workflow before adding infrastructure. It does not pretend to send messages or scrape reviews. It gives small businesses a practical operating system for manual review collection: clear next actions, copy-ready messages, follow-up tracking, testimonial permission and exports.
 
+The login screen is intentionally browser-local. It separates workspaces on one device but is not a secure cloud account system. Export JSON backups before clearing browser data or switching machines.
+
 ## What Is Not Included In v0.1
 
 - No Google API
@@ -77,7 +83,7 @@ ReviewPilot v0.1 is meant to prove the workflow before adding infrastructure. It
 - No automated SMS or email sending
 - No OpenAI API
 - No backend
-- No authentication
+- No cloud authentication or shared team accounts
 - No database
 - No Stripe
 - No paid APIs

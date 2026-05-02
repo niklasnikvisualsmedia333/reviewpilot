@@ -14,19 +14,22 @@ import {
   Save,
   Search,
   Send,
+  ShieldCheck,
   Trash2,
+  User,
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Layout, type PageKey } from './components/Layout';
 import { Badge, Card, EmptyState, FieldLabel, StatCard } from './components/ui';
 import { defaultTemplates } from './data/defaultTemplates';
+import { createDemoData } from './data/demoData';
 import { addDaysISO, formatDate, isDueOrOverdue, isOverdue, nowISO, todayISO } from './lib/dates';
 import { downloadText, toCsv } from './lib/csv';
-import { calculateMetrics, countByServiceType, funnelData } from './lib/reports';
-import { importData, loadData, resetDemoData, saveData } from './lib/storage';
+import { calculateMetrics, countByAcquisitionSource, countByCustomerType, countByServiceType, funnelData } from './lib/reports';
+import { createAccount, getAccounts, getActiveAccountId, importData, loadData, resetDemoData, saveData, setActiveAccountId, updateAccount } from './lib/storage';
 import { createMailtoLink, createMessageVariants, createWaMeLink, renderTemplate } from './lib/templates';
 import { permissionLabels, statusLabels, statusOrder } from './lib/status';
-import type { AppData, Channel, Customer, CustomerStatus, Feedback, Language, PermissionStatus, Template, TemplateContext, Tone } from './types';
+import type { AppData, BusinessType, Channel, Customer, CustomerStatus, Feedback, Language, LocalAccount, PermissionStatus, Template, TemplateContext, Tone } from './types';
 
 const blankCustomer = (): Customer => ({
   id: `cust-${crypto.randomUUID()}`,
@@ -36,6 +39,9 @@ const blankCustomer = (): Customer => ({
   phone: '',
   projectName: '',
   serviceType: '',
+  customerType: 'business_client',
+  acquisitionSource: '',
+  projectValue: 0,
   projectDate: todayISO(),
   status: 'project_completed',
   internalNotes: '',
@@ -55,6 +61,9 @@ const customerColumns = [
   { key: 'phone', label: 'Phone' },
   { key: 'projectName', label: 'Project' },
   { key: 'serviceType', label: 'Service type' },
+  { key: 'customerType', label: 'Customer type' },
+  { key: 'acquisitionSource', label: 'Acquisition source' },
+  { key: 'projectValue', label: 'Project value EUR' },
   { key: 'status', label: 'Status' },
   { key: 'followUpDate', label: 'Follow-up date' },
 ] satisfies Array<{ key: keyof Customer; label: string }>;
@@ -70,12 +79,36 @@ const feedbackColumns = [
 ] as const;
 
 function App() {
-  const [data, setData] = useState<AppData>(() => loadData());
+  const [accounts, setAccounts] = useState<LocalAccount[]>(() => getAccounts());
+  const [activeAccountId, setActiveAccount] = useState(() => getActiveAccountId());
+  const activeAccount = accounts.find((account) => account.id === activeAccountId);
+  const [data, setData] = useState<AppData>(() => (activeAccountId ? loadData(activeAccountId) : createDemoData()));
   const [active, setActive] = useState<PageKey>('dashboard');
 
-  useEffect(() => saveData(data), [data]);
+  useEffect(() => {
+    if (activeAccountId) saveData(data, activeAccountId);
+  }, [activeAccountId, data]);
 
   const updateData = (updater: (current: AppData) => AppData) => setData((current) => updater(current));
+  const switchAccount = (accountId: string) => {
+    setActiveAccountId(accountId);
+    setActiveAccount(accountId);
+    setData(loadData(accountId));
+    setActive('dashboard');
+    const account = accounts.find((item) => item.id === accountId);
+    if (account) {
+      const updated = { ...account, lastActiveAt: nowISO() };
+      updateAccount(updated);
+      setAccounts(getAccounts());
+    }
+  };
+  const createLocalAccount = (name: string, email: string, businessType: BusinessType) => {
+    const account = createAccount(name, email, businessType);
+    setAccounts(getAccounts());
+    setActiveAccount(account.id);
+    setData(loadData(account.id));
+    setActive('dashboard');
+  };
 
   const exportCustomers = () => downloadText('reviewpilot-customers.csv', toCsv(data.customers, customerColumns), 'text/csv;charset=utf-8');
   const testimonialRows = data.feedback.map((feedback) => {
@@ -92,6 +125,28 @@ function App() {
   });
   const exportTestimonials = () => downloadText('reviewpilot-testimonials.csv', toCsv(testimonialRows, feedbackColumns), 'text/csv;charset=utf-8');
   const exportJson = () => downloadText('reviewpilot-backup.json', JSON.stringify(data, null, 2), 'application/json;charset=utf-8');
+
+  if (!activeAccount) {
+    return <LoginScreen accounts={accounts} onCreate={createLocalAccount} onSelect={switchAccount} />;
+  }
+
+  const completeOnboarding = (profile: Partial<AppData['businessProfile']>, businessType: BusinessType) => {
+    updateAccount({ ...activeAccount, businessType, lastActiveAt: nowISO() });
+    setAccounts(getAccounts());
+    setData((current) => ({
+      ...current,
+      onboardingCompleted: true,
+      businessProfile: {
+        ...current.businessProfile,
+        ...profile,
+        updatedAt: nowISO(),
+      },
+    }));
+  };
+
+  if (!data.onboardingCompleted) {
+    return <Onboarding account={activeAccount} data={data} onComplete={completeOnboarding} />;
+  }
 
   const page = {
     dashboard: <Dashboard data={data} setActive={setActive} updateData={updateData} />,
@@ -115,6 +170,10 @@ function App() {
         data={data}
         updateData={updateData}
         setData={setData}
+        account={activeAccount}
+        accounts={accounts}
+        onSwitchAccount={switchAccount}
+        onSignOut={() => setActiveAccount('')}
         exportCustomers={exportCustomers}
         exportTestimonials={exportTestimonials}
         exportJson={exportJson}
@@ -124,7 +183,7 @@ function App() {
   }[active];
 
   return (
-    <Layout active={active} setActive={setActive}>
+    <Layout active={active} setActive={setActive} accountName={activeAccount.name}>
       {page}
     </Layout>
   );
@@ -139,6 +198,128 @@ const PageHeader = ({ title, eyebrow, children }: { title: string; eyebrow?: str
     {children}
   </div>
 );
+
+const businessTypeLabels: Record<BusinessType, string> = {
+  freelancer: 'Freelancer',
+  local_service: 'Local service business',
+  agency: 'Small agency',
+  photography: 'Photo or video business',
+  health_practice: 'Practice',
+  consulting: 'Consulting',
+  handcraft: 'Handcraft business',
+  other: 'Other',
+};
+
+const LoginScreen = ({ accounts, onCreate, onSelect }: { accounts: LocalAccount[]; onCreate: (name: string, email: string, businessType: BusinessType) => void; onSelect: (accountId: string) => void }) => {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [businessType, setBusinessType] = useState<BusinessType>('local_service');
+  const canCreate = name.trim().length > 1;
+
+  return (
+    <main className="flex min-h-screen items-center justify-center px-4 py-8">
+      <div className="grid w-full max-w-6xl gap-6 lg:grid-cols-[1fr_420px]">
+        <Card className="p-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-teal-300 text-slate-950">
+            <ShieldCheck size={24} />
+          </div>
+          <p className="mt-6 text-sm font-medium text-teal-200">Local-first workspace login</p>
+          <h1 className="mt-2 text-4xl font-semibold text-white">ReviewPilot keeps each business workspace separate.</h1>
+          <p className="mt-4 max-w-2xl text-slate-300">
+            This static v0.1 uses browser-local accounts, not cloud authentication. It is enough to separate different people or businesses on this device while keeping customer data private and exportable.
+          </p>
+          <div className="mt-8 grid gap-3 md:grid-cols-3">
+            {['No backend account', 'Separate local data', 'JSON backup ready'].map((item) => (
+              <div key={item} className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-300">{item}</div>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <h2 className="text-xl font-semibold text-white">Sign in locally</h2>
+          <div className="mt-4 space-y-2">
+            {accounts.map((account) => (
+              <button key={account.id} className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-left hover:bg-white/[0.06]" onClick={() => onSelect(account.id)}>
+                <span>
+                  <span className="block font-medium text-white">{account.name}</span>
+                  <span className="text-xs text-slate-500">{businessTypeLabels[account.businessType]} · {account.email || 'No email'}</span>
+                </span>
+                <User size={16} className="text-teal-200" />
+              </button>
+            ))}
+          </div>
+          <div className="mt-6 border-t border-white/10 pt-5">
+            <h3 className="font-medium text-white">Create workspace</h3>
+            <div className="mt-4 space-y-4">
+              <TextInput label="Your name" value={name} onChange={setName} />
+              <TextInput label="Email for this local profile" value={email} onChange={setEmail} />
+              <SelectInput label="Business type" value={businessType} onChange={(value) => setBusinessType(value as BusinessType)} options={Object.keys(businessTypeLabels)} labels={businessTypeLabels} />
+              <button className="btn btn-primary w-full" disabled={!canCreate} onClick={() => onCreate(name.trim(), email.trim(), businessType)}>
+                Create local workspace
+              </button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </main>
+  );
+};
+
+const Onboarding = ({ account, data, onComplete }: { account: LocalAccount; data: AppData; onComplete: (profile: Partial<AppData['businessProfile']>, businessType: BusinessType) => void }) => {
+  const [profile, setProfile] = useState({
+    businessName: data.businessProfile.businessName,
+    ownerName: data.businessProfile.ownerName || account.name,
+    googleReviewLink: data.businessProfile.googleReviewLink,
+    defaultLanguage: data.businessProfile.defaultLanguage,
+    primaryChannel: data.businessProfile.primaryChannel,
+    defaultTone: data.businessProfile.defaultTone,
+  });
+  const [businessType, setBusinessType] = useState<BusinessType>(account.businessType);
+  const [serviceTypes, setServiceTypes] = useState('Photography, Website, Consulting');
+
+  return (
+    <main className="min-h-screen px-4 py-8">
+      <div className="mx-auto max-w-5xl">
+        <PageHeader title="Set up your review workflow" eyebrow="Five minutes now saves forgotten follow-ups later" />
+        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+          <Card>
+            <div className="grid gap-4 md:grid-cols-2">
+              <TextInput label="Business name" value={profile.businessName} onChange={(value) => setProfile({ ...profile, businessName: value })} />
+              <TextInput label="Owner name" value={profile.ownerName} onChange={(value) => setProfile({ ...profile, ownerName: value })} />
+              <TextInput label="Google review link" value={profile.googleReviewLink} onChange={(value) => setProfile({ ...profile, googleReviewLink: value })} />
+              <TextInput label="Main service types" value={serviceTypes} onChange={setServiceTypes} />
+              <SelectInput label="Business type" value={businessType} onChange={(value) => setBusinessType(value as BusinessType)} options={Object.keys(businessTypeLabels)} labels={businessTypeLabels} />
+              <SelectInput label="Default language" value={profile.defaultLanguage} onChange={(value) => setProfile({ ...profile, defaultLanguage: value as Language })} options={['de', 'en']} />
+              <SelectInput label="Primary channel" value={profile.primaryChannel} onChange={(value) => setProfile({ ...profile, primaryChannel: value as Channel })} options={['whatsapp', 'email', 'sms', 'linkedin']} />
+              <SelectInput label="Default tone" value={profile.defaultTone} onChange={(value) => setProfile({ ...profile, defaultTone: value as Tone })} options={['friendly', 'professional', 'warm', 'short']} />
+            </div>
+            <button
+              className="btn btn-primary mt-6"
+              onClick={() =>
+                onComplete(
+                  {
+                    ...profile,
+                    notes: `Onboarding service focus: ${serviceTypes}`,
+                  },
+                  businessType,
+                )
+              }
+            >
+              Finish onboarding
+            </button>
+          </Card>
+          <Card>
+            <h2 className="text-lg font-semibold text-white">What ReviewPilot will track</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-300">
+              <p>Customer type, acquisition source and project value make reports useful beyond vanity metrics.</p>
+              <p>Every customer can receive the same honest public review option, so the workflow avoids review gating.</p>
+              <p>Testimonials stay separate from private feedback and require explicit permission before reuse.</p>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </main>
+  );
+};
 
 const Dashboard = ({ data, setActive, updateData }: { data: AppData; setActive: (page: PageKey) => void; updateData: (fn: (data: AppData) => AppData) => void }) => {
   const metrics = calculateMetrics(data);
@@ -164,6 +345,8 @@ const Dashboard = ({ data, setActive, updateData }: { data: AppData; setActive: 
         <StatCard label="Google reviews received" value={metrics.googleReviewsReceived} />
         <StatCard label="Request to feedback" value={`${metrics.requestToFeedbackRate}%`} />
         <StatCard label="Approval rate" value={`${metrics.testimonialApprovalRate}%`} />
+        <StatCard label="Tracked project value" value={`EUR ${metrics.totalProjectValue.toLocaleString('de-DE')}`} />
+        <StatCard label="Avg project value" value={`EUR ${metrics.averageProjectValue.toLocaleString('de-DE')}`} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <Card>
@@ -343,7 +526,7 @@ const Customers = ({ data, updateData, setActive }: { data: AppData; updateData:
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="text-xs uppercase tracking-[0.12em] text-slate-500">
               <tr>
-                {['Customer', 'Project', 'Status', 'Follow-up', 'Channel', 'Permission', 'Actions'].map((heading) => (
+                {['Customer', 'Project', 'Source', 'Status', 'Follow-up', 'Channel', 'Permission', 'Actions'].map((heading) => (
                   <th key={heading} className="border-b border-white/10 px-3 py-3">{heading}</th>
                 ))}
               </tr>
@@ -357,7 +540,11 @@ const Customers = ({ data, updateData, setActive }: { data: AppData; updateData:
                   </td>
                   <td className="px-3 py-4">
                     <p>{customer.projectName}</p>
-                    <p className="text-slate-500">{customer.serviceType}</p>
+                    <p className="text-slate-500">{customer.serviceType} · EUR {customer.projectValue || 0}</p>
+                  </td>
+                  <td className="px-3 py-4">
+                    <p className="capitalize">{customer.customerType.replace(/_/g, ' ')}</p>
+                    <p className="text-slate-500">{customer.acquisitionSource || 'Unknown'}</p>
                   </td>
                   <td className="px-3 py-4"><Badge value={customer.status} label={statusLabels[customer.status]} /></td>
                   <td className={`px-3 py-4 ${isOverdue(customer.followUpDate) ? 'text-amber-200' : 'text-slate-300'}`}>{formatDate(customer.followUpDate)}</td>
@@ -401,6 +588,9 @@ const CustomerModal = ({ customer, onClose, onSave }: { customer: Customer; onCl
           <TextInput label="Phone" value={draft.phone} onChange={(value) => set('phone', value)} />
           <TextInput label="Project name" value={draft.projectName} onChange={(value) => set('projectName', value)} />
           <TextInput label="Service type" value={draft.serviceType} onChange={(value) => set('serviceType', value)} />
+          <SelectInput label="Customer type" value={draft.customerType} onChange={(value) => set('customerType', value)} options={['private_client', 'business_client', 'partner', 'repeat_client', 'other']} />
+          <TextInput label="Acquisition source" value={draft.acquisitionSource} onChange={(value) => set('acquisitionSource', value)} />
+          <TextInput label="Project value EUR" type="number" value={String(draft.projectValue)} onChange={(value) => setDraft((current) => ({ ...current, projectValue: Number(value) || 0 }))} />
           <TextInput label="Project date" type="date" value={draft.projectDate} onChange={(value) => set('projectDate', value)} />
           <TextInput label="Follow-up date" type="date" value={draft.followUpDate} onChange={(value) => set('followUpDate', value)} />
           <SelectInput label="Status" value={draft.status} onChange={(value) => set('status', value)} options={[...statusOrder, 'archived']} />
@@ -419,7 +609,9 @@ const CustomerModal = ({ customer, onClose, onSave }: { customer: Customer; onCl
 };
 
 const Generator = ({ data, updateData }: { data: AppData; updateData: (fn: (data: AppData) => AppData) => void }) => {
-  const [customerId, setCustomerId] = useState(data.customers.find((customer) => customer.status !== 'archived')?.id ?? '');
+  const [customerId, setCustomerId] = useState(
+    data.customers.find((customer) => customer.status === 'project_completed')?.id ?? data.customers.find((customer) => customer.status !== 'archived')?.id ?? '',
+  );
   const customer = data.customers.find((item) => item.id === customerId) ?? data.customers[0];
   const [channel, setChannel] = useState<Channel>(customer?.preferredChannel ?? data.businessProfile.primaryChannel);
   const [language, setLanguage] = useState<Language>(customer?.language ?? data.businessProfile.defaultLanguage);
@@ -432,6 +624,15 @@ const Generator = ({ data, updateData }: { data: AppData; updateData: (fn: (data
   const selected = variants[selectedIndex]?.text ?? '';
   const wa = customer ? createWaMeLink(customer.phone, selected) : '';
   const mailto = customer ? createMailtoLink(customer.email, `Honest feedback for ${customer.projectName || data.businessProfile.businessName}`, selected) : '';
+  const chooseCustomer = (id: string) => {
+    setCustomerId(id);
+    const nextCustomer = data.customers.find((item) => item.id === id);
+    if (nextCustomer) {
+      setChannel(nextCustomer.preferredChannel);
+      setLanguage(nextCustomer.language);
+      setSelectedIndex(0);
+    }
+  };
 
   const mark = (status: 'prepared' | 'sent') => {
     if (!customer) return;
@@ -471,7 +672,7 @@ const Generator = ({ data, updateData }: { data: AppData; updateData: (fn: (data
       <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
         <Card>
           <div className="space-y-4">
-            <SelectInput label="Customer" value={customer?.id ?? ''} onChange={setCustomerId} options={data.customers.map((item) => item.id)} labels={Object.fromEntries(data.customers.map((item) => [item.id, `${item.name} · ${item.projectName}`]))} />
+            <SelectInput label="Customer" value={customer?.id ?? ''} onChange={chooseCustomer} options={data.customers.map((item) => item.id)} labels={Object.fromEntries(data.customers.map((item) => [item.id, `${item.name} · ${item.projectName}`]))} />
             <SelectInput label="Channel" value={channel} onChange={(value) => setChannel(value as Channel)} options={['whatsapp', 'email', 'sms', 'linkedin']} />
             <SelectInput label="Language" value={language} onChange={(value) => setLanguage(value as Language)} options={['de', 'en']} />
             <SelectInput label="Tone" value={tone} onChange={(value) => setTone(value as Tone)} options={['friendly', 'professional', 'warm', 'short']} />
@@ -506,10 +707,10 @@ const Generator = ({ data, updateData }: { data: AppData; updateData: (fn: (data
 
 const FollowUps = ({ data, updateData }: { data: AppData; updateData: (fn: (data: AppData) => AppData) => void }) => {
   const groups = [
-    { title: 'Overdue follow-ups', items: data.customers.filter((customer) => isOverdue(customer.followUpDate) && customer.status !== 'archived') },
-    { title: 'Due today', items: data.customers.filter((customer) => customer.followUpDate === todayISO() && customer.status !== 'archived') },
-    { title: 'Upcoming', items: data.customers.filter((customer) => customer.followUpDate > todayISO() && customer.status !== 'archived') },
-    { title: 'Completed follow-ups', items: data.customers.filter((customer) => customer.status === 'feedback_received' || customer.status === 'testimonial_approved') },
+    { title: 'Overdue follow-ups', hint: 'Copy the follow-up, send it manually, then mark the outcome.', items: data.customers.filter((customer) => isOverdue(customer.followUpDate) && customer.status !== 'archived') },
+    { title: 'Due today', hint: 'These are the promises that need action today.', items: data.customers.filter((customer) => customer.followUpDate === todayISO() && customer.status !== 'archived') },
+    { title: 'Upcoming', hint: 'Prepared future reminders so nothing disappears in chat history.', items: data.customers.filter((customer) => customer.followUpDate > todayISO() && customer.status !== 'archived') },
+    { title: 'Closed outcomes', hint: 'Customers with feedback or approved testimonials; no follow-up date remains active.', items: data.customers.filter((customer) => (customer.status === 'feedback_received' || customer.status === 'testimonial_approved') && !customer.followUpDate) },
   ];
 
   const followTemplate = (customer: Customer) => {
@@ -524,6 +725,7 @@ const FollowUps = ({ data, updateData }: { data: AppData; updateData: (fn: (data
         {groups.map((group) => (
           <Card key={group.title}>
             <h2 className="text-lg font-semibold text-white">{group.title}</h2>
+            <p className="mt-1 text-sm text-slate-500">{group.hint}</p>
             <div className="mt-4 space-y-3">
               {group.items.length ? (
                 group.items.map((customer) => (
@@ -638,7 +840,11 @@ const FeedbackTestimonials = ({ data, updateData, exportTestimonials }: { data: 
 
 const QuoteCard = ({ feedback, customer, compact = false }: { feedback: Feedback; customer?: Customer; compact?: boolean }) => {
   const attribution = [feedback.canUseName ? customer?.name : '', feedback.canUseCompany ? customer?.company : ''].filter(Boolean).join(', ');
-  const copy = (prefix: string) => navigator.clipboard.writeText(`${prefix ? `${prefix}\n\n` : ''}"${feedback.testimonialText}"\n${attribution ? `- ${attribution}` : ''}`);
+  const canReuse = feedback.permissionStatus === 'granted';
+  const copy = (prefix: string) => {
+    if (!canReuse) return;
+    navigator.clipboard.writeText(`${prefix ? `${prefix}\n\n` : ''}"${feedback.testimonialText}"\n${attribution ? `- ${attribution}` : ''}`);
+  };
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -647,11 +853,12 @@ const QuoteCard = ({ feedback, customer, compact = false }: { feedback: Feedback
       </div>
       <p className={`text-slate-100 ${compact ? 'text-sm' : 'text-base'}`}>"{feedback.testimonialText}"</p>
       <p className="mt-3 text-sm text-slate-400">{attribution || customer?.serviceType || 'Private attribution'}</p>
+      {!canReuse ? <p className="mt-3 rounded-md border border-amber-300/20 bg-amber-300/10 p-2 text-xs text-amber-100">Do not reuse publicly until permission is granted.</p> : null}
       {!compact ? (
         <div className="mt-4 flex flex-wrap gap-2">
-          <button className="btn btn-ghost" onClick={() => copy('Website testimonial')}>Website</button>
-          <button className="btn btn-ghost" onClick={() => copy('LinkedIn post quote')}>LinkedIn</button>
-          <button className="btn btn-ghost" onClick={() => copy('Proposal proof quote')}>Proposal</button>
+          <button className="btn btn-ghost" disabled={!canReuse} onClick={() => copy('Website testimonial')}>Website</button>
+          <button className="btn btn-ghost" disabled={!canReuse} onClick={() => copy('LinkedIn post quote')}>LinkedIn</button>
+          <button className="btn btn-ghost" disabled={!canReuse} onClick={() => copy('Proposal proof quote')}>Proposal</button>
         </div>
       ) : null}
     </div>
@@ -716,6 +923,8 @@ const Templates = ({ data, updateData }: { data: AppData; updateData: (fn: (data
 const Reports = ({ data, updateData, exportCustomers, exportTestimonials, exportJson }: { data: AppData; updateData: (fn: (data: AppData) => AppData) => void; exportCustomers: () => void; exportTestimonials: () => void; exportJson: () => void }) => {
   const metrics = calculateMetrics(data);
   const serviceTypeData = Object.entries(countByServiceType(data)).map(([name, value]) => ({ name, value }));
+  const sourceData = Object.entries(countByAcquisitionSource(data)).map(([name, value]) => ({ name, value }));
+  const customerTypeData = Object.entries(countByCustomerType(data)).map(([name, value]) => ({ name: name.replace(/_/g, ' '), value }));
   const trend = Array.from({ length: 8 }).map((_, index) => {
     const label = `W${index + 1}`;
     return {
@@ -742,6 +951,8 @@ const Reports = ({ data, updateData, exportCustomers, exportTestimonials, export
         <StatCard label="Feedback received" value={metrics.feedbackReceived} />
         <StatCard label="Testimonials approved" value={metrics.testimonialsApproved} />
         <StatCard label="Conversion rate" value={`${metrics.requestToFeedbackRate}%`} />
+        <StatCard label="Project value tracked" value={`EUR ${metrics.totalProjectValue.toLocaleString('de-DE')}`} />
+        <StatCard label="Average project value" value={`EUR ${metrics.averageProjectValue.toLocaleString('de-DE')}`} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card>
@@ -775,12 +986,62 @@ const Reports = ({ data, updateData, exportCustomers, exportTestimonials, export
             </ResponsiveContainer>
           </div>
         </Card>
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Customers by acquisition source</h2>
+          <div className="mt-4 h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sourceData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2a44" />
+                <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#94a3b8" allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }} />
+                <Bar dataKey="value" fill="#38bdf8" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Customers by type</h2>
+          <div className="mt-4 h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={customerTypeData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2a44" />
+                <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} />
+                <YAxis stroke="#94a3b8" allowDecimals={false} />
+                <Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }} />
+                <Bar dataKey="value" fill="#f4c95d" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
       </div>
     </>
   );
 };
 
-const Settings = ({ data, updateData, setData, exportCustomers, exportTestimonials, exportJson }: { data: AppData; updateData: (fn: (data: AppData) => AppData) => void; setData: (data: AppData) => void; exportCustomers: () => void; exportTestimonials: () => void; exportJson: () => void }) => {
+const Settings = ({
+  data,
+  updateData,
+  setData,
+  account,
+  accounts,
+  onSwitchAccount,
+  onSignOut,
+  exportCustomers,
+  exportTestimonials,
+  exportJson,
+}: {
+  data: AppData;
+  updateData: (fn: (data: AppData) => AppData) => void;
+  setData: (data: AppData) => void;
+  account: LocalAccount;
+  accounts: LocalAccount[];
+  onSwitchAccount: (accountId: string) => void;
+  onSignOut: () => void;
+  exportCustomers: () => void;
+  exportTestimonials: () => void;
+  exportJson: () => void;
+}) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const importBackup = (file?: File) => {
     if (!file) return;
@@ -796,7 +1057,27 @@ const Settings = ({ data, updateData, setData, exportCustomers, exportTestimonia
     <>
       <PageHeader title="Settings" eyebrow="Local data, backups and principles" />
       <div className="grid gap-6 xl:grid-cols-2">
-        <BusinessSetup data={data} updateData={updateData} />
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Local account</h2>
+          <p className="mt-2 text-sm text-slate-400">Static v0.1 workspaces are local to this browser. They separate data on this device but are not cloud authentication.</p>
+          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+            <p className="font-medium text-white">{account.name}</p>
+            <p className="text-sm text-slate-400">{account.email || 'No email'} · {businessTypeLabels[account.businessType]}</p>
+          </div>
+          <div className="mt-4 space-y-3">
+            <SelectInput label="Switch workspace" value={account.id} onChange={onSwitchAccount} options={accounts.map((item) => item.id)} labels={Object.fromEntries(accounts.map((item) => [item.id, item.name]))} />
+            <button className="btn" onClick={onSignOut}><User size={16} /> Back to local login</button>
+          </div>
+        </Card>
+        <Card>
+          <h2 className="text-lg font-semibold text-white">Business profile</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <TextInput label="Business name" value={data.businessProfile.businessName} onChange={(value) => updateData((current) => ({ ...current, businessProfile: { ...current.businessProfile, businessName: value, updatedAt: nowISO() } }))} />
+            <TextInput label="Owner name" value={data.businessProfile.ownerName} onChange={(value) => updateData((current) => ({ ...current, businessProfile: { ...current.businessProfile, ownerName: value, updatedAt: nowISO() } }))} />
+            <TextInput label="Google review link" value={data.businessProfile.googleReviewLink} onChange={(value) => updateData((current) => ({ ...current, businessProfile: { ...current.businessProfile, googleReviewLink: value, updatedAt: nowISO() } }))} />
+            <TextInput label="Website URL" value={data.businessProfile.websiteUrl} onChange={(value) => updateData((current) => ({ ...current, businessProfile: { ...current.businessProfile, websiteUrl: value, updatedAt: nowISO() } }))} />
+          </div>
+        </Card>
         <Card>
           <h2 className="text-lg font-semibold text-white">Data import and export</h2>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -827,7 +1108,7 @@ const About = () => (
       </Card>
       <Card>
         <h2 className="text-lg font-semibold text-white">What v0.1 intentionally does not do</h2>
-        <p className="mt-3 leading-7 text-slate-300">No Google API, no scraping, no automated sending, no authentication, no backend, no paid APIs, no OpenAI API, no Stripe, and no review gating. The point is a trustworthy manual workflow that can be deployed as a static site.</p>
+        <p className="mt-3 leading-7 text-slate-300">No Google API, no scraping, no automated sending, no cloud authentication, no backend, no paid APIs, no OpenAI API, no Stripe, and no review gating. Local profiles separate workspaces in this browser only.</p>
       </Card>
       <Card>
         <h2 className="text-lg font-semibold text-white">Why manual-first</h2>

@@ -29,10 +29,12 @@ export const Layout = ({
   active,
   setActive,
   children,
+  accountName,
 }: {
   active: PageKey;
   setActive: (page: PageKey) => void;
   children: React.ReactNode;
+  accountName?: string;
 }) => (
   <div className="min-h-screen lg:flex">
     <aside className="border-b border-white/10 bg-slate-950/70 lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
@@ -65,6 +67,7 @@ export const Layout = ({
       </nav>
       <div className="hidden px-5 py-5 text-xs leading-5 text-slate-500 lg:block">
         Ask every real customer for honest feedback. Track the manual work. Reuse testimonials with permission.
+        {accountName ? <span className="mt-3 block rounded-md border border-white/10 bg-white/[0.03] p-2 text-slate-300">Workspace: {accountName}</span> : null}
       </div>
     </aside>
     <main className="w-full px-4 py-5 lg:ml-72 lg:px-8 lg:py-8">{children}</main>
